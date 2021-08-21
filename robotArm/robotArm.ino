@@ -2,6 +2,17 @@
 // https://forum.arduino.cc/t/increase-steppe-motor-speed/486907/8#msg3455713
 
 // speed in AccelStepper is in steps/sec
+// in the beginning, only add support for updating positions with MoveJoints
+// i think the way we can do it is by not interpolating in the arduino code
+// we just let the arduino send a message to the raspi when it has reached it's first
+// position, and then the raspi can send a new command
+
+// or, the raspi calculates all the points in the path,
+// and sends all of it to the arduino
+
+// Largest motor in AX_6: 38*38*38
+
+// 90\n45\n80\n90\n90\n90\n20\n1000
 
 
 // Include libraries
@@ -144,7 +155,6 @@ void setup() {
   Serial.begin(9600);
   Serial.println("Robotarm running");
 
-
   // Initialize the motors
   stepper_joints[0].setMaxSpeed(1000);
   stepper_joints[0].setAcceleration(200);
@@ -187,19 +197,9 @@ void setup() {
   Home();
 
 }
-int pos[7] = {0, 80, 90, 0, -90, 0, 180};
-int pos2[7] = {120, 90, 0, 90, 90, 0, 0};
-int pos3[7] = {0, 0, 0, 0, 0, 0, 0};
 
 void loop() {
   ReadSerial();
-/*
-  delay(1000);
-  MoveJoints(pos2, 500);
-  delay(1000);
-  MoveJoints(pos3, 500);
-  delay(1000);
-  */
 }
 
 
@@ -210,14 +210,11 @@ void MoveJoint(int joint, float angle, int vel) {
 
   // Check that the joint is valid
   if (joint >= 0 && joint <= 6) {
+    
     // Check if the joint is driven by a servo
-    if (joint == 3) {
-      servo_joints[0].writeMicroseconds(AngleToPulse(angle, 3));
+    if (joint == 3 || joint == 6) {
+      servo_joints[JointToServo(joint)].writeMicroseconds(AngleToPulse(angle, joint));
       delay(2000);  
-
-    } else if (joint == 6) {
-      servo_joints[1].writeMicroseconds(AngleToPulse(angle, 6));
-      delay(2000);
 
     // The joint is driven by a stepper motor
     } else {
@@ -258,66 +255,72 @@ void MoveJoints(int pos[], float vel) {
   // Moves all joints to the postions given in the array
   // The speed is for the stepper that travels the furthest distance
   
-  
   float travel_dist[7] = {0, 0, 0, 0, 0, 0, 0};
   float step_size[7] = {0, 0, 0, 0, 0, 0, 0};
   int longest_dist[2] = {0, 0}; // The joint position and the joint
-  float max_dist = 0;
-  float joint_vel[7] = {0, 0, 0, 0, 0, 0, 0};
-  float interpolation_factor = 100;
-  int ax_2_pos;
+  float interpolation_factor = 100.0;
+  int ax_2_pos; // The positon of the stepper before we do anything
   int ax_2_travel_without_link;
   
-  // Calcualte the steps for all joints
+  // Calcualte the steps and travel lengths for all joints
+  int steps; // The number of units the motor would have to travel from its zero position
+  int dist; // The number of units the motor actually has to travel, considering its current position
   for (int i = 0; i <= 6; i++) {
-    int steps;
-    if (i == 2) {
-      Serial.print("before moving");Serial.println(stepper_joints[2].currentPosition());
+    // Servo code
+    if (i == 3 || i == 6){
+      // The servos steps is the number of degrees (1:1 ratio) to reach its position from zero
+      steps = pos[i];
+      // Find the current position of the servo to find the distance it has to travel
+      dist = steps - servo_joints[JointToServo(i)].read();
+
+    // Adjust for the motion link of joint 2
+    } else if (i == 2) { 
+      // Calculate the steps it would have to travel without the motion link
       ax_2_pos = stepper_joints[2].currentPosition(); 
-      
       steps = stepsPerDeg[2] * (pos[2] / 360.0);
       stepper_joints[2].moveTo(steps);
-      ax_2_travel_without_link = stepper_joints[2].distanceToGo();
-      
+      // This is the travel length without the motion link, and
+      // the length we need to say that the motor has travelled
+      // in order for the steps to match the angle of the joint
+      ax_2_travel_without_link = stepper_joints[2].distanceToGo(); 
+
+      // Account for the motion link
       steps = stepsPerDeg[2] * (pos[2] / 360.0) - stepper_joints[1].distanceToGo();
       stepper_joints[i].moveTo(steps);
+
+      // Find the real distance it has to travel
+      dist = stepper_joints[i].distanceToGo();
+
     } else {
-      if (i==3 || i ==6){
-        steps = pos[i];
-      } else {
+
       steps = stepsPerDeg[i] * (pos[i] / 360.0);
       stepper_joints[i].moveTo(steps);
-      }
-    }
-    int dist;
-    if (i == 3 || i == 6) {
-      dist = steps;
-    } else {
-      //stepper_joints[i].moveTo(steps);
-      // Use distanceToGo() to find the steps it has to travel (steps is relative to the start position)
+
+      // Find the real distance it has to travel
       dist = stepper_joints[i].distanceToGo();
-      //Serial.println(dist);
     }
-    // Find the the length longest travel path/the most steps one of the motors has to travel
+    // Add the distance to the array and calculate the step size
+    travel_dist[i] = dist;
+    step_size[i] = travel_dist[i] / interpolation_factor;
+
+    // Find the the length longest distance one of the motors has to travel
     if (abs(dist) > abs(longest_dist[0])) {
       longest_dist[0] = dist;
       longest_dist[1] = i;
-      max_dist = dist;
     }
-    travel_dist[i] = dist;
-    step_size[i] = travel_dist[i] / interpolation_factor;
   }
 
   // Adjust the speed of each joint
+  float joint_vel;
   for (int i = 0; i <= 6; i++) {
     if (i == 3 || i == 6) {
       // Servo code
       // Implement servo speed code
     } else {
       // Let's say that we want all acceleartion to be done in 4 seconds
-      joint_vel[i] = (travel_dist[i] / longest_dist[0]) * vel;
-      stepper_joints[i].setMaxSpeed(joint_vel[i]);
-      stepper_joints[i].setAcceleration(joint_vel[i]/4);
+      joint_vel = (travel_dist[i] / longest_dist[0]) * vel;
+      stepper_joints[i].setMaxSpeed(joint_vel);
+      stepper_joints[i].setAcceleration(joint_vel/4);
       
     }
   }
@@ -325,20 +328,29 @@ void MoveJoints(int pos[], float vel) {
 
   // Run each joint
   int counter = 1;
+  float servo_start[2] = {servo_joints[0].read(), servo_joints[1].read()};
+
   while (stepper_joints[longest_dist[1]].distanceToGo() != 0) { // this will not work if the loop runs and a step is not finished
     for (int i = 0; i <= 6; i++) {
       if (i == 3 || i == 6) {
-        if (i == 3) {
-          servo_joints[0].writeMicroseconds(AngleToPulse(step_size[i]*counter, 3));
-        } else {
-          servo_joints[1].writeMicroseconds(AngleToPulse(step_size[i]*counter, 6));
+        // Move the servo to the startposition plus x*step size. The step size can be negative
+        servo_joints[JointToServo(i)].writeMicroseconds(AngleToPulse(servo_start[JointToServo(i)] + step_size[i]*counter, i));
+
+        // If the servo is the motor with the longest travel distance
+        // it means none of the steppers should move longer than 180
+        // steps, so we can just increase the counter
+        if (i == longest_dist[1]){
+          counter ++;
         }
 
       } else {
-        if (i == longest_dist[1] && (stepper_joints[i].distanceToGo() == travel_dist[i] - counter * step_size[i] || i == 3 || i == 6)) {
+        // If the stepper with the longest travel distance has reached its position, increase the counter
+        // addde <=, could cause probelms
+        if (i == longest_dist[1] && stepper_joints[i].distanceToGo() <= travel_dist[i] - (counter * step_size[i])) {
           counter ++;
         }
-        if (stepper_joints[i].distanceToGo() == travel_dist[i] - (counter * step_size[i])) { 
+        // If the stepper has reached (or come past its position, test this, may be why big interpolation factors do not work), do not step
+        if (stepper_joints[i].distanceToGo() <= travel_dist[i] - (counter * step_size[i])) { 
             
         } else {
           stepper_joints[i].run();
@@ -349,11 +361,19 @@ void MoveJoints(int pos[], float vel) {
     }
   }
   // Set the correct position of joint 2
-  Serial.print("before correction");Serial.println(stepper_joints[2].currentPosition());
-  int real_pos = ax_2_pos + ax_2_travel_without_link;//stepsPerDeg[2] * (pos[2] / 360.0);
+  int real_pos = ax_2_pos + ax_2_travel_without_link;
   stepper_joints[2].setCurrentPosition(real_pos);
-  Serial.print("after correction");Serial.println(stepper_joints[2].currentPosition());
 }
+/*
+Replace MoveJoints() by two functions
+We would have to make longest_dist, travel_dist and step_size global vars
+We would set the interpolation to longest_dist/200
+SetJoints() would do everything in MoveJoints before the while(), and have the same parameters as MoveJoints
+StepJoints() would do the while loop, and have zero parameters
+By giving SetJoints small intervals (maybe 2 degrees on the biggest joint) at a time
+we will travel in small arcs from each point, creating a quite straight line,
+depending on the number of points
+*/
 
 void TriggerEndstops() {
   // Trigger the endstop for each axis one
@@ -362,7 +382,7 @@ void TriggerEndstops() {
 
   int steps;
   int joint;
-  int home_sequence[7] = {1, 0, 2, 3, 4, 5, 6};
+  int home_sequence[7] = {1, 0, 2, 3, 5, 4, 6};
   for (int i = 0; i <= 6; i++){
     joint = home_sequence[i];
     if (joint == 3 || joint == 6){
@@ -412,8 +432,6 @@ void Home(){
   stepper_joints[2].setCurrentPosition(0);
   stepper_joints[4].setCurrentPosition(0);
   stepper_joints[5].setCurrentPosition(0);
-
-  // Largest motor in AX_6: 38*38*38
 }
 
 int AngleToPulse(int ang, int joint) {
@@ -424,7 +442,6 @@ int AngleToPulse(int ang, int joint) {
 
 void ReadSerial(){
   // Allows the user to control the robot arm with serial commands
-
 
   // Define the different commands
   const char* a = "MoveJoint";
@@ -444,6 +461,11 @@ void ReadSerial(){
   // Temporary holder for the user input
   String tmp_in;
   if (command == a){
+    // Try sending something like 0,90,1000, with readStringUntil set to ','
+    // According to documentation the , will be removed,
+    // and we can then call the same function all over again
+    // https://www.arduino.cc/reference/en/language/functions/communication/serial/readstringuntil/
+    
     Serial.println("Enter joint, angle and velocity on three different lines");
 
     float input_data[3] = {0, 0, 0};
@@ -492,6 +514,14 @@ void ReadSerial(){
     }
     MoveJoints(input_angles, input_vel);
 
+    /*  New version of this function
+     *  Create an array of 100 points
+     *  Let the raspi send 100 points (which means 7 angles for each point)
+     *  Then send the velocity
+     *  Then loop over each joint and call MoveJoints on the points
+     */
+
+
   } else if (command == h){
     Home();
   } else if (command == e){
@@ -500,4 +530,15 @@ void ReadSerial(){
   else {
     Serial.println("The input did not match any commands");
   }
+}
+
+int JointToServo(int joint){
+  if (joint == 3){
+    return 0;
+  } else if (joint == 6){
+    return 1;
+  }
+}
+
+void ServoWithSpeed(int servo, int speed){
 }

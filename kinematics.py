@@ -1,8 +1,6 @@
 # /usr/bin/env python3
 import math
 
-
-
 class OldKinematics:
     # A python version of https:#github.com/glumb/robot-gui/blob/master/js/Kinematics.js
     def __init__(self, geometry):
