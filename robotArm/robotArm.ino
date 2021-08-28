@@ -231,12 +231,12 @@ void MoveJoint(int joint, float angle, int vel) {
         // have to save the actual angle of the joint
         stepper_joints[2].setMaxSpeed(vel);
         stepper_joints[2].setAcceleration(vel/4);
-        int steps_ax2 = stepper_joints[1].distanceToGo()*-1; // this is the correct way  //*(stepsPerDeg[1]/stepsPerDeg[2])*-1 wrong wau; // WHat is correct here?
-        stepper_joints[2].move(steps_ax2);
+        int steps_ax2 = stepper_joints[1].distanceToGo()*-1;
         old_pos = stepper_joints[2].currentPosition();
+        stepper_joints[2].move(steps_ax2);
       }
       // Do a step until the motor has reached its goal
-      while (stepper_joints[joint].distanceToGo() != 0) {
+      while (stepper_joints[joint].isRunning() ) {
         stepper_joints[joint].run();
         if (joint == 1){
           stepper_joints[2].run();
@@ -251,6 +251,8 @@ void MoveJoint(int joint, float angle, int vel) {
   }
 }
 
+// Vi antar at det alltid er en stepper motor som skal lengst
+
 void MoveJoints(int pos[], float vel) {
   // Moves all joints to the postions given in the array
   // The speed is for the stepper that travels the furthest distance
@@ -258,7 +260,7 @@ void MoveJoints(int pos[], float vel) {
   float travel_dist[7] = {0, 0, 0, 0, 0, 0, 0};
   float step_size[7] = {0, 0, 0, 0, 0, 0, 0};
   int longest_dist[2] = {0, 0}; // The joint position and the joint
-  float interpolation_factor = 100.0;
+  float interpolation_factor = 1000.0;
   int ax_2_pos; // The positon of the stepper before we do anything
   int ax_2_travel_without_link;
   
@@ -305,7 +307,7 @@ void MoveJoints(int pos[], float vel) {
 
     // Find the the length longest distance one of the motors has to travel
     if (abs(dist) > abs(longest_dist[0])) {
-      longest_dist[0] = dist;
+      longest_dist[0] = abs(dist);
       longest_dist[1] = i;
     }
   }
@@ -328,34 +330,29 @@ void MoveJoints(int pos[], float vel) {
 
   // Run each joint
   int counter = 1;
-  float servo_start[2] = {servo_joints[0].read(), servo_joints[1].read()};
+  float servo_start[2] = {0,0};
+  servo_start[0] = servo_joints[0].read();
+  delay(10);
+  servo_start[1] = servo_joints[1].read();
+  delay(10);
 
-  while (stepper_joints[longest_dist[1]].distanceToGo() != 0) { // this will not work if the loop runs and a step is not finished
+
+// Antar at servoen aldri kjører lengst
+  while (stepper_joints[longest_dist[1]].isRunning()) { // this will not work if the loop runs and a step is not finished
     for (int i = 0; i <= 6; i++) {
-      if (i == 3 || i == 6) {
+      if ((i == 3 || i == 6) && counter % 3 == 0) {
         // Move the servo to the startposition plus x*step size. The step size can be negative
-        servo_joints[JointToServo(i)].writeMicroseconds(AngleToPulse(servo_start[JointToServo(i)] + step_size[i]*counter, i));
-
-        // If the servo is the motor with the longest travel distance
-        // it means none of the steppers should move longer than 180
-        // steps, so we can just increase the counter
-        if (i == longest_dist[1]){
-          counter ++;
-        }
+        float new_pos = servo_start[JointToServo(i)] + (step_size[i]*counter);
+        servo_joints[JointToServo(i)].writeMicroseconds(AngleToPulse(new_pos, i));
+        delay(0.5);
 
       } else {
         // If the stepper with the longest travel distance has reached its position, increase the counter
         // addde <=, could cause probelms
-        if (i == longest_dist[1] && stepper_joints[i].distanceToGo() <= travel_dist[i] - (counter * step_size[i])) {
+        if (i == longest_dist[1] && abs(stepper_joints[i].distanceToGo()) <= abs(travel_dist[i] - (counter * step_size[i]))) {
           counter ++;
         }
-        // If the stepper has reached (or come past its position, test this, may be why big interpolation factors do not work), do not step
-        if (stepper_joints[i].distanceToGo() <= travel_dist[i] - (counter * step_size[i])) { 
-            
-        } else {
           stepper_joints[i].run();
-        }
-
       }
 
     }
@@ -386,6 +383,7 @@ void TriggerEndstops() {
   for (int i = 0; i <= 6; i++){
     joint = home_sequence[i];
     if (joint == 3 || joint == 6){
+      MoveJoint(joint, 0, 100);
       // Do not do anythin if it is a servo
       Serial.println("Servo joint, no endstop to trigger");
     } else {
