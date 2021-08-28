@@ -195,7 +195,7 @@ void setup() {
   // Reset the robot
   TriggerEndstops();
   Home();
-
+  Serial.println("ok init");
 }
 
 void loop() {
@@ -484,6 +484,7 @@ void ReadSerial(){
   
     // Call the function with the given parameters
     MoveJoint(input_data[0], input_data[1], input_data[2]);
+    Serial.println("finish");
 
   } else if (command == b){
     Serial.println("Enter angle of joint 0-6 (inculding the gripper) and the top velocity on eight different lines");
@@ -511,19 +512,15 @@ void ReadSerial(){
       }
     }
     MoveJoints(input_angles, input_vel);
-
-    /*  New version of this function
-     *  Create an array of 100 points
-     *  Let the raspi send 100 points (which means 7 angles for each point)
-     *  Then send the velocity
-     *  Then loop over each joint and call MoveJoints on the points
-     */
-
+    Serial.println("finish");
 
   } else if (command == h){
     Home();
+    Serial.println("finish");
+    
   } else if (command == e){
     TriggerEndstops();
+    Serial.println("finish");
   }
   else {
     Serial.println("The input did not match any commands");
@@ -536,7 +533,4 @@ int JointToServo(int joint){
   } else if (joint == 6){
     return 1;
   }
-}
-
-void ServoWithSpeed(int servo, int speed){
 }
