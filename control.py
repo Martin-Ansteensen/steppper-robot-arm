@@ -3,7 +3,31 @@
 
 # Imports
 import serial, time
+from kinematics import Kinematics
 
+# Robot geometry
+geometry = [
+    #xyz
+    [0,0,109.4], # V0
+    [0,0,112.6], # V1
+    [57.7,0,0],  # V2
+    [80.8,0,0],  # V3
+    [67.4,0,0]   # V4
+]
+
+
+joint_limits = [
+    [-90, 190],
+    [-42, 110],
+    [-180, 2],
+    [0, 180],
+    [-102, 102],
+    [-90, 240],
+    [0, 180]
+]
+
+# Create the kinematics model of the robot
+robot = Kinematics(geometry, joint_limits)
 
 USB_PORT = "/dev/ttyACM0"  # Arduino Mega 2560
 
@@ -18,7 +42,9 @@ except:
 # List of commands
 commands = ["TriggerEndstops\n", "Home\n", "MoveJoints\n"]
 
-# Waiu for the robot to finish init
+
+
+# Wait for the robot to finish init
 while True:
     line = usb.readline()  # read input from Arduino
     line = line.decode()  # convert type from bytes to string
@@ -27,50 +53,70 @@ while True:
         print("Robot arm finish init")
         break
 
-ready_for_new_command = True
-counter = 0
 
-positions = [
-    [45,  90,  85, 90,  90, 0, 160],
-    [0,   0,  -85, 0,   90, 0, 0],
-    [-45, 30, -35, 90, -90, 0, 160]
-]
 
-for l in range(len(positions)):
-    for i in range(len(positions[l])):
-        positions[l][i] = str(positions[l][i])
+def send_position(position, speed):
+    """ Gets positons in degrees for each
+    joint and sends them to the robot"""
 
-while True:
-    if ready_for_new_command:
-        if counter == 3:
-            counter = 0
-        print("Sending new command to robot arm")
-        usb.write(commands[2].encode('UTF-8'))
+    usb.write(commands[2].encode('UTF-8'))
+    time.sleep(0.05)
+    print("Sending: " + commands[2])
+
+    # Convert positons to stringsb before encoding and sending
+    for i in range(len(position)):
+        position[i] = str(position[i])
+        usb.write(str(position[i]+"\n").encode('UTF-8'))
         time.sleep(0.05)
 
-        for i in positions[counter]:
-            usb.write(str(i+"\n").encode('UTF-8'))
-            time.sleep(0.05)
-        
-        usb.write(b'1000\n')
-        counter += 1
-        ready_for_new_command = False
-        # if counter == 0:
-        #     print(commands[0])
-        #     usb.write(commands[0].encode('UTF-8'))
-        #     counter = 1
-        # else:
-        #     print(commands[1])
-        #     usb.write(commands[1].encode('UTF-8'))
-        #     counter = 0
-        # ready_for_new_command = False
+    speed = str(speed)
+    usb.write(str(speed+"\n").encode('UTF-8'))
+
+
+
+def get_arduino_data():
+    """ Reads the serial data from the arduino
+    and checks if it is ready to recieve new informaton """
 
     line = usb.readline()  # read input from Arduino
     line = line.decode()  # convert type from bytes to string
     line = line.strip()  # strip extra whitespace characters
-    print(line)
+    if line != "":
+        print(line)
 
-    if line == "finish" and not ready_for_new_command:
-        ready_for_new_command = True
+    if line == "finish":
         print("Robotarm ready for new command")
-        time.sleep(0.1)
+        time.sleep(0.05)
+        return True
+    else:
+        return False
+
+
+
+coordinates = [
+    #x,y,z a,b,c gripper
+    [140, -81,   134, -3.14,  0,  -1.27, 0],
+    [211, -81,   134, -3.14,  0,  -1.27, 0],
+    [211,  81,   134, -3.14,  0,  -1.27, 0],
+    [140,  81,   134, -3.14,  0,  -1.27, 0]
+]
+
+
+counter = 0
+
+FIRST_RUN = True
+# Send and recieve data forever
+while True:
+    # If the arduino is ready to recieve new commands
+    if get_arduino_data() or FIRST_RUN:
+        FIRST_RUN = False
+        if counter == len(coordinates):
+            break
+            counter = 0
+            
+        angles = robot.convertJointAngleToRobot(robot.inverseKin(coordinates[counter][:-1]))
+        angles.append(coordinates[counter][-1])
+        send_position(angles, 1200)
+        counter += 1
+
+

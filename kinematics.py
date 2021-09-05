@@ -3,7 +3,8 @@ import math
 
 class Kinematics:
     # A python version of https://github.com/glumb/robot-gui/blob/master/js/Kinematics.js
-    def __init__ (self, geometry):
+    def __init__ (self, geometry, joint_limits):
+        self.limits = joint_limits
         self.V1_length_x_z = math.sqrt(math.pow(geometry[1][0], 2) + math.pow(geometry[1][2], 2))
         self.V4_length_x_y_z = math.sqrt(math.pow(geometry[4][0], 2) + math.pow(geometry[4][2], 2) + math.pow(-geometry[4][1], 2))
 
@@ -28,7 +29,14 @@ class Kinematics:
 
         self.geometry = geometry
 
-    def inverseKin(self, x, y, z, a, b, c):
+    def inverseKin(self, coords):
+        x = coords[0]
+        y = coords[1]
+        z = coords[2]
+        a = coords[3]
+        b = coords[4]
+        c = coords[5]
+
         cc = math.cos(c)
         sc = math.sin(c)
         cb = math.cos(b)
@@ -176,7 +184,14 @@ class Kinematics:
 
         return R
 
-    def forwardKin(self, R0, R1, R2, R3, R4, R5):
+    def forwardKin(self, angles):
+        R0 = angles[0]
+        R1 = angles[1]
+        R2 = angles[2]
+        R3 = angles[3]
+        R4 = angles[4]
+        R5 = angles[5]
+
         a = math.cos(R0)
         b = math.sin(R0)
         c = self.geometry[0][0]
@@ -296,23 +311,52 @@ class Kinematics:
         cross = self.cross(v1, v2)
         return math.atan2(self.length3(cross), self.dot(v1, v2))
 
-geo = [
-    #xyz
-    [0,0,109.4], # V0
-    [0,0,112.6], # V1
-    [57.7,0,0],  # V2
-    [80.8,0,0],  # V3
-    [67.4,0,0]   # V4
-]
+    def convertJointAngleToRobot(self, angles):
+        for i in range(len(angles)):
+            angles[i] = angles[i]*180/math.pi 
+        return angles
+    
+    def validateRobotAngles(self, angles):
+        for i, angle in enumerate(angles):
+            if angle > self.limits[i][0] and angle < self.limits[i][1]:
+                pass
+            else:
+                # Invalid angle, abort process
+                return False
+        # All angles are valid, continue
+        return True
+            
 
-# inKIn zero all joints match website
-# 205.9, 0, 222, 0, math.pi/2, 0
+
+if __name__ == "__main__":
+
+    geo = [
+        #xyz
+        [0,0,109.4], # V0
+        [0,0,112.6], # V1
+        [57.7,0,0],  # V2
+        [80.8,0,0],  # V3
+        [67.4,0,0]   # V4
+    ]
+
+
+    joint_limits = [
+        [-90, 190],
+        [-42, 110],
+        [-180, 2],
+        [0, 180],
+        [-102, 102],
+        [-90, 240],
+        [0, 180]
+    ]
+
+    # inKIn zero all joints match website
+    # 205.9, 0, 222, 0, math.pi/2, 0
 
 
 
-robot = Kinematics(geo)
-position = robot.forwardKin(0,0,0,0,0,0)
-print(position)
+    robot = Kinematics(geo, joint_limits)
+    pos = [14, -8.1, 13.4, -3.14,  0,  -1.27]
+    website_match = robot.convertJointAngleToRobot(robot.inverseKin(163, 0, 100, -math.pi, 0, -1)) # 427,9
 
-website_match = robot.inverseKin(205.9, 0, 222, 0, math.pi/2, 0) # 427,9
-print(website_match)
+    print(website_match)

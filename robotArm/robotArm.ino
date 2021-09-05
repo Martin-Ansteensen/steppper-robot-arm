@@ -79,12 +79,14 @@
 #define jyb28408_motorInterfaceType 8
 
 // Notes on each joints range of motion
-// Positive for all joints are away from their limit switch
+// Positive for all is the same as the kinetic model
 // Their home position is so that the arm points in a 90 degree from ax3
 // Home position is relative to the endstop, and will be set as zero
 // Min position is towards the endstop with home as 0
 // Max position is away from the endstop with home as 0
 
+
+// i think we can remove the min max and keep that in teh python script
 #define axis_1_home        90
 #define axis_1_min         -90
 #define axis_1_max         190
@@ -93,9 +95,9 @@
 #define axis_2_min         -42
 #define axis_2_max         110
 
-#define axis_3_home        95
-#define axis_3_min         -95
-#define axis_3_max         95
+#define axis_3_home        -2
+#define axis_3_min         2
+#define axis_3_max         -180
 
 // Min/max in frequence because servo
 #define axis_4_home        0 // In degrees
@@ -171,7 +173,7 @@ void setup() {
   stepper_joints[2].setMaxSpeed(1000);
   stepper_joints[2].setAcceleration(200);
   stepper_joints[2].setEnablePin(Z_ENABLE_PIN);
-  stepper_joints[2].setPinsInverted(true, false, true);
+  stepper_joints[2].setPinsInverted(false, true, true);
   stepper_joints[2].enableOutputs();
 
   servo_joints[0].attach(SERVO_1_PIN, axis_4_min, axis_4_max);
@@ -231,7 +233,7 @@ void MoveJoint(int joint, float angle, int vel) {
         // have to save the actual angle of the joint
         stepper_joints[2].setMaxSpeed(vel);
         stepper_joints[2].setAcceleration(vel/4);
-        int steps_ax2 = stepper_joints[1].distanceToGo()*-1;
+        int steps_ax2 = stepper_joints[1].distanceToGo()*-1; // 
         old_pos = stepper_joints[2].currentPosition();
         stepper_joints[2].move(steps_ax2);
       }
@@ -287,7 +289,7 @@ void MoveJoints(int pos[], float vel) {
       ax_2_travel_without_link = stepper_joints[2].distanceToGo(); 
 
       // Account for the motion link
-      steps = stepsPerDeg[2] * (pos[2] / 360.0) - stepper_joints[1].distanceToGo();
+      steps = stepsPerDeg[2] * (pos[2] / 360.0) + stepper_joints[1].distanceToGo();
       stepper_joints[i].moveTo(steps);
 
       // Find the real distance it has to travel
@@ -390,13 +392,17 @@ void TriggerEndstops() {
       // Get the max distance the joint potentially has to travel
       // Make it negative because we have defined negative as twoards the endstop
       steps = stepsPerDeg[joint] * -1; 
+      if (joint == 2){
+        steps = steps*-1;
+      }
+      
       stepper_joints[joint].move(steps);
       
       stepper_joints[joint].setMaxSpeed(1000);
       stepper_joints[joint].setAcceleration(250);
       // Move joint 2 if we move joint 1 due to the moition link
       if (joint == 1){
-        stepper_joints[2].move(steps*-1);
+        stepper_joints[2].move(steps); //*-1
         stepper_joints[2].setMaxSpeed(1000);
         stepper_joints[2].setAcceleration(250);
       }
