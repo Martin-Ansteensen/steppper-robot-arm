@@ -1,0 +1,27 @@
+{
+    "camera": {
+        "video_stream_height": 480,
+        "video_stream_width": 640,
+        "framerate": 10,
+        "video_rotation": 0
+    },
+    "deskewing_coordinates": [
+        [
+            774,
+            750
+        ],
+        [
+            692,
+            62
+        ],
+        [
+            219,
+            113
+        ],
+        [
+            64,
+            753
+        ]
+    ],
+    "user_resolution": 800
+}
