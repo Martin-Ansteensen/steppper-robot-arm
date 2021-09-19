@@ -113,15 +113,17 @@
 #define axis_6_max         240
 
 // Min/max in frequence because servo
-#define gripper_home       180 // in dgrees
-#define gripper_min        1300 // Open 
-#define gripper_max        2300 // Close
+#define gripper_home       180 // open
+#define gripper_min        1300 // closed 90 in degrees
+#define gripper_max        2300 // open 180 in degrees
 
 
 // Ax 1, 2, 3 ... (bottom to top) Max postions in deg. Convert to rad later
 int minJointPositon[7] =  {axis_1_min, axis_2_min, axis_3_min, axis_4_min, axis_5_min, axis_6_min, gripper_min};
 int maxJointPosition[7] = {axis_1_max, axis_2_max, axis_3_max, axis_4_max, axis_5_max, axis_6_max, gripper_max};
 int homeJointPosition[7] = {axis_1_home, axis_2_home, axis_3_home, axis_4_home, axis_5_home, axis_6_home, gripper_home};
+int servoMinDeg[2] = {0, 90};
+int servoMaxDeg[2] = {180, 180};
 
 // The pins for the endstops. The axes driven by servos do not have endstops
 int endstops[7] = {X_MIN_PIN, X_MAX_PIN, Y_MIN_PIN, 0, Y_MAX_PIN, Z_MIN_PIN, 0};
@@ -176,7 +178,7 @@ void setup() {
   stepper_joints[2].setPinsInverted(false, true, true);
   stepper_joints[2].enableOutputs();
 
-  servo_joints[0].attach(SERVO_1_PIN, axis_4_min, axis_4_max);
+  servo_joints[0].attach(SERVO_2_PIN, axis_4_min, axis_4_max);
 
   stepper_joints[4].setMaxSpeed(1000);
   stepper_joints[4].setAcceleration(200);
@@ -187,7 +189,7 @@ void setup() {
   stepper_joints[5].setMaxSpeed(80);
   stepper_joints[5].setAcceleration(20);
 
-  servo_joints[1].attach(SERVO_2_PIN, gripper_min, gripper_max);
+  servo_joints[1].attach(SERVO_1_PIN, gripper_min, gripper_max);
 
   // ENDSTOP SETUP
   for (int i = 0; i <= 6; i++){
@@ -201,7 +203,7 @@ void setup() {
 }
 
 void loop() {
-  ReadSerial();
+  ReadSerial(); 
 }
 
 
@@ -265,6 +267,12 @@ void MoveJoints(int pos[], float vel) {
   float interpolation_factor = 1000.0;
   int ax_2_pos; // The positon of the stepper before we do anything
   int ax_2_travel_without_link;
+
+  float servo_start[2] = {0,0};
+
+  servo_start[0] = servo_joints[0].read();
+  delay(10);
+  servo_start[1] = servo_joints[1].read();
   
   // Calcualte the steps and travel lengths for all joints
   int steps; // The number of units the motor would have to travel from its zero position
@@ -275,8 +283,9 @@ void MoveJoints(int pos[], float vel) {
       // The servos steps is the number of degrees (1:1 ratio) to reach its position from zero
       steps = pos[i];
       // Find the current position of the servo to find the distance it has to travel
-      dist = steps - servo_joints[JointToServo(i)].read();
-
+      // We store the distance as pulses because we use writeMicrosecnds to send the signal
+      dist = steps - servo_start[JointToServo(i)];
+      
     // Adjust for the motion link of joint 2
     } else if (i == 2) { 
       // Calculate the steps it would have to travel without the motion link
@@ -332,12 +341,6 @@ void MoveJoints(int pos[], float vel) {
 
   // Run each joint
   int counter = 1;
-  float servo_start[2] = {0,0};
-  servo_start[0] = servo_joints[0].read();
-  delay(10);
-  servo_start[1] = servo_joints[1].read();
-  delay(10);
-
 
 // Antar at servoen aldri kjører lengst
   while (stepper_joints[longest_dist[1]].isRunning()) { // this will not work if the loop runs and a step is not finished
@@ -388,6 +391,7 @@ void TriggerEndstops() {
       MoveJoint(joint, 0, 100);
       // Do not do anythin if it is a servo
       Serial.println("Servo joint, no endstop to trigger");
+      MoveJoint(joint, 180, 10);
     } else {
       // Get the max distance the joint potentially has to travel
       // Make it negative because we have defined negative as twoards the endstop
@@ -440,7 +444,8 @@ void Home(){
 
 int AngleToPulse(int ang, int joint) {
   // Converts angle to a pulselength for servo motors
-  int pulse = map(ang, 0, 180, minJointPositon[joint], maxJointPosition[joint]);
+  int servo = JointToServo(joint);
+  int pulse = map(ang, servoMinDeg[servo], servoMaxDeg[servo], minJointPositon[joint], maxJointPosition[joint]);
   return pulse;
 }
 

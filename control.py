@@ -22,7 +22,7 @@ joint_limits = [
     [-1, 180], #egentlig 0, men løser mange problemer
     [-102, 102],
     [-90, 240],
-    [0, 180]
+    [90, 180] #close, open
 ]
 
 # Create the kinematics model of the robot
@@ -52,6 +52,7 @@ while True:
 
     if arduino.read_serial():
         ARDUINO_READY = True
+    
     if shape_detection.detect(camera_input.deskewed_img_resized):
 
         current_xy = camera_input.image_to_coordinates(shape_detection.coordinates[0][0], shape_detection.coordinates[0][1])
@@ -72,10 +73,12 @@ while True:
             if kin_model.validateRobotAnglesDeg(angles_deg):
                 angles_deg.append(coordinates[-1])  # Add the gipper position
                 arduino.send_MoveJoints(angles_deg, 1000)
+                
                 ARDUINO_READY = False
+
                 while not arduino.read_serial():
                     pass
-                coordinates[2] = 3
+                coordinates[2] = 1
                 print(coordinates)
                 angles_rad = kin_model.doInverseKin(coordinates[:-1])
 
@@ -91,11 +94,11 @@ while True:
                     arduino.send_MoveJoints(angles_deg, 500)
                     while not arduino.read_serial():
                         pass
-                    arduino.send_MoveJoint(6, 40, 100)
+                    arduino.send_MoveJoint(6, 115, 100)
 
                     while not arduino.read_serial():
                         pass
-                    arduino.send_MoveJoints([0, 0, 0, 0, 0, 0, 40], 1000)
+                    arduino.send_MoveJoints([0, -20, -30, 0, 0, 0, 115], 1000)
 
                     while not arduino.read_serial():
                         pass
