@@ -1,6 +1,11 @@
 # /usr/bin/env python3
 import math
 
+## NOTE
+# Need to do some work on forwardKin in terms of
+# validating angles before caculating to avoid
+# that the program crash
+
 class Kinematics:
     # A python version of https://github.com/glumb/robot-gui/blob/master/js/Kinematics.js
     def __init__ (self, geometry, joint_limits):
@@ -311,22 +316,42 @@ class Kinematics:
         cross = self.cross(v1, v2)
         return math.atan2(self.length3(cross), self.dot(v1, v2))
 
-    def convertJointAngleToRobot(self, angles):
+    def convertRadToDeg(self, angles):
         for i in range(len(angles)):
             angles[i] = angles[i]*180/math.pi 
         return angles
     
-    def validateRobotAngles(self, angles):
+    def validateRobotAnglesDeg(self, angles):
+        print(angles)
         for i, angle in enumerate(angles):
-            if angle > self.limits[i][0] and angle < self.limits[i][1]:
+            if self.limits[i][0] <= angle <= self.limits[i][1]:
                 pass
             else:
                 # Invalid angle, abort process
+                print("Angles exceed the robot's limits")
                 return False
         # All angles are valid, continue
+        print("Angles are valid")
         return True
-            
 
+    def doInverseKin(self, coordinates):
+        try:
+            return self.inverseKin(coordinates)
+        except ValueError as e:
+            print(e)
+            print("The destination is out of reach for the robot")
+            return False  
+
+    def map(self, x, in_min, in_max, out_min, out_max):
+	    return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
+       
+    def calculate_gripper_angle(self, width):
+        """ Takes the width of an object and
+        returns the angle of the servo motor 
+        controlling the gripper that matches
+        this width """
+        angle = math.acos(width/60)*180/math.pi
+        angle = self.map(angle, 0, 90, 0, 180)
 
 if __name__ == "__main__":
 
@@ -350,13 +375,10 @@ if __name__ == "__main__":
         [0, 180]
     ]
 
-    # inKIn zero all joints match website
-    # 205.9, 0, 222, 0, math.pi/2, 0
-
-
-
     robot = Kinematics(geo, joint_limits)
     pos = [14, -8.1, 13.4, -3.14,  0,  -1.27]
-    website_match = robot.convertJointAngleToRobot(robot.inverseKin(163, 0, 100, -math.pi, 0, -1)) # 427,9
-
-    print(website_match)
+    angles_rad = robot.doInverseKin([500, 20, 100, -math.pi, 0, -1])
+    if angles_rad:
+        angles_deg = robot.convertRadToDeg(angles_rad)
+        robot.validateRobotAnglesDeg(angles_deg)
+        print(angles_deg)

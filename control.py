@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
-
 # Imports
-import serial, time
 from kinematics import Kinematics
-
+from arduinoCommunication import ArduinoCommunication
+from getVideoFeed import CameraInput, ShapeDetection
+import imutils, cv2
 # Robot geometry
 geometry = [
     #xyz
@@ -12,111 +12,129 @@ geometry = [
     [0,0,112.6], # V1
     [57.7,0,0],  # V2
     [80.8,0,0],  # V3
-    [67.4,0,0]   # V4
+    [130,0,0]   # V4
 ]
-
 
 joint_limits = [
     [-90, 190],
     [-42, 110],
     [-180, 2],
-    [0, 180],
+    [-1, 180], #egentlig 0, men løser mange problemer
     [-102, 102],
     [-90, 240],
     [0, 180]
 ]
 
 # Create the kinematics model of the robot
-robot = Kinematics(geometry, joint_limits)
+kin_model = Kinematics(geometry, joint_limits)
+arduino = ArduinoCommunication()
+camera_input = CameraInput() # Create a instance of the CameraInput class
+shape_detection = ShapeDetection()
 
-USB_PORT = "/dev/ttyACM0"  # Arduino Mega 2560
-
-# Connect to USB serial port at 9600 baud
-try:
-   usb = serial.Serial(USB_PORT, 9600, timeout=2)
-except:
-   print("ERROR - Could not open USB serial port.  Please check your port name and permissions.")
-   print("Exiting program.")
-   exit()
-
-# List of commands
-commands = ["TriggerEndstops\n", "Home\n", "MoveJoints\n"]
-
-
-
-# Wait for the robot to finish init
-while True:
-    line = usb.readline()  # read input from Arduino
-    line = line.decode()  # convert type from bytes to string
-    line = line.strip()  # strip extra whitespace characters
-    if line == "ok init":
-        print("Robot arm finish init")
-        break
-
-
-
-def send_position(position, speed):
-    """ Gets positons in degrees for each
-    joint and sends them to the robot"""
-
-    usb.write(commands[2].encode('UTF-8'))
-    time.sleep(0.05)
-    print("Sending: " + commands[2])
-
-    # Convert positons to stringsb before encoding and sending
-    for i in range(len(position)):
-        position[i] = str(position[i])
-        usb.write(str(position[i]+"\n").encode('UTF-8'))
-        time.sleep(0.05)
-
-    speed = str(speed)
-    usb.write(str(speed+"\n").encode('UTF-8'))
-
-
-
-def get_arduino_data():
-    """ Reads the serial data from the arduino
-    and checks if it is ready to recieve new informaton """
-
-    line = usb.readline()  # read input from Arduino
-    line = line.decode()  # convert type from bytes to string
-    line = line.strip()  # strip extra whitespace characters
-    if line != "":
-        print(line)
-
-    if line == "finish":
-        print("Robotarm ready for new command")
-        time.sleep(0.05)
-        return True
-    else:
-        return False
-
-
-
-coordinates = [
-    #x,y,z a,b,c gripper
-    [140, -81,   134, -3.14,  0,  -1.27, 0],
-    [211, -81,   134, -3.14,  0,  -1.27, 0],
-    [211,  81,   134, -3.14,  0,  -1.27, 0],
-    [140,  81,   134, -3.14,  0,  -1.27, 0]
-]
-
-
-counter = 0
-
+# Begin the video stream
+vs = cv2.VideoCapture(0)
+vs.set(3, camera_input.frame_width)  
+vs.set(4, camera_input.frame_height)  
+vs.set(5, camera_input.framerate) 
+ret, frame = vs.read() # Get the first frame
+print("The resolution of the images: ", frame.shape[0], frame.shape[1]) # Print the resolution of the image
+# Adjust the resolution in case the camera does not support
+# the resolution set in config
+camera_input.frame_height = frame.shape[0]  
+camera_input.frame_width = frame.shape[1]
+past_xy = (None, None)
 FIRST_RUN = True
-# Send and recieve data forever
+ARDUINO_READY = True
 while True:
-    # If the arduino is ready to recieve new commands
-    if get_arduino_data() or FIRST_RUN:
-        FIRST_RUN = False
-        if counter == len(coordinates):
-            break
-            counter = 0
+    ret, frame = vs.read() # Get the next frame.
+    frame = imutils.rotate(frame, angle=camera_input.camera_rotation) # Rotate the fram according to the angel provided in the .json file
+    camera_input.run(frame)
+
+    if arduino.read_serial():
+        ARDUINO_READY = True
+    if shape_detection.detect(camera_input.deskewed_img_resized):
+
+        current_xy = camera_input.image_to_coordinates(shape_detection.coordinates[0][0], shape_detection.coordinates[0][1])
+        if past_xy != current_xy:
+            FIRST_RUN = False
+            past_xy = current_xy
+            coordinates = [past_xy[0], past_xy[1], 30, 0, 3.14, 0, 180]
+            print(coordinates)
+            angles_rad = kin_model.doInverseKin(coordinates[:-1])
+
+            # If no angles are returned do not perform the rest of the iteration
+            if not angles_rad:
+                    # Skips the rest of this iteration
+                    continue
+
+            angles_deg = kin_model.convertRadToDeg(angles_rad)
+            # Only send the values if they are valid
+            if kin_model.validateRobotAnglesDeg(angles_deg):
+                angles_deg.append(coordinates[-1])  # Add the gipper position
+                arduino.send_MoveJoints(angles_deg, 1000)
+                ARDUINO_READY = False
+                while not arduino.read_serial():
+                    pass
+                coordinates[2] = 3
+                print(coordinates)
+                angles_rad = kin_model.doInverseKin(coordinates[:-1])
+
+                # If no angles are returned do not perform the rest of the iteration
+                if not angles_rad:
+                        # Skips the rest of this iteration
+                        continue
+
+                angles_deg = kin_model.convertRadToDeg(angles_rad)
+                # Only send the values if they are valid
+                if kin_model.validateRobotAnglesDeg(angles_deg):
+                    angles_deg.append(coordinates[-1])  # Add the gipper position
+                    arduino.send_MoveJoints(angles_deg, 500)
+                    while not arduino.read_serial():
+                        pass
+                    arduino.send_MoveJoint(6, 40, 100)
+
+                    while not arduino.read_serial():
+                        pass
+                    arduino.send_MoveJoints([0, 0, 0, 0, 0, 0, 40], 1000)
+
+                    while not arduino.read_serial():
+                        pass
+                    arduino.send_MoveJoint(6, 180, 100)
+
+
+# coordinates = [
+#     #x,y,z a,b,c gripper
+#     [190, 0,   87, 0,  3.14,  0, 0],
+#     [500, -120,   20, 0,  3.14,  0, 0]
+# ]
+
+# counter = 0
+
+# FIRST_RUN = True
+# # Send and recieve data forever
+# while True:
+#     # If the arduino is ready to recieve new commands
+#     if arduino.read_serial() or FIRST_RUN:
+#         FIRST_RUN = False
+#         if counter == len(coordinates):
+#             #break
+#             counter = 0
             
-        angles = robot.convertJointAngleToRobot(robot.inverseKin(coordinates[counter][:-1]))
-        angles.append(coordinates[counter][-1])
-        send_position(angles, 1200)
-        counter += 1
+#         # Do the Inverse Kinematics calculations, but 
+#         # exclude the gripper open/close position    
+#         angles_rad = kin_model.doInverseKin(coordinates[counter][:-1])
+
+#         # If no angles are returned do not perform the rest of the iteration
+#         if not angles_rad:
+#                 # Skips the rest of this iteration
+#                 continue
+
+#         angles_deg = kin_model.convertRadToDeg(angles_rad)
+#         # Only send the values if they are valid
+#         if kin_model.validateRobotAnglesDeg(angles_deg):
+#             angles_deg.append(coordinates[counter][-1])  # Add the gipper position
+#             arduino.send_MoveJoints(angles_deg, 1200)
+
+#         counter += 1
 
 
