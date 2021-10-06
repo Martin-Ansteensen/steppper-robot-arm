@@ -90,7 +90,7 @@ class Kinematics:
         R[0] += -alphaR0
 
         if -1 * self.J_initial_absolute[4][1] > self.length2(J[4][2], J[4][0]):
-            print('out of reach')
+            print('Kinematics: out of reach')
 
         # ---- J1 ----
         # # R0
@@ -322,24 +322,24 @@ class Kinematics:
         return angles
     
     def validateRobotAnglesDeg(self, angles):
-        print(angles)
+        print("Kinematics: angles in deg ", angles)
         for i, angle in enumerate(angles):
             if self.limits[i][0] <= angle <= self.limits[i][1]:
                 pass
             else:
                 # Invalid angle, abort process
-                print("Angles exceed the robot's limits")
+                print("Kinematics: Angles exceed the robot's limits")
                 return False
         # All angles are valid, continue
-        print("Angles are valid")
+        print("Kinematics: Angles are valid")
         return True
 
     def doInverseKin(self, coordinates):
         try:
             return self.inverseKin(coordinates)
         except ValueError as e:
-            print(e)
-            print("The destination is out of reach for the robot")
+            print("Kinematics: ", e)
+            print("Kinematics: The destination is out of reach for the robot")
             return False  
 
     def map(self, x, in_min, in_max, out_min, out_max):
@@ -381,4 +381,4 @@ if __name__ == "__main__":
     if angles_rad:
         angles_deg = robot.convertRadToDeg(angles_rad)
         robot.validateRobotAnglesDeg(angles_deg)
-        print(angles_deg)
+        print("Kinematics: angles in deg ", angles_deg)

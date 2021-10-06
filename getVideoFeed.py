@@ -1,31 +1,34 @@
 import cv2, imutils, json, os, os.path
 import numpy as np
 
+
 class CameraInput(object):
 	"""  The user chooses four points on the screen. The image 
 	inside these four points is then deskewed  """
-
-	def __init__(self):
+	
+	def __init__(self, debug, configure):
 		"""  Declare variables and load settings from
 		json file  """
+		self.debug = debug # Only show the deskewed image
+		self.configure = configure
 		self.x_real, self.y_real = None, None
 		self.original_frame = None # The original fram in full resolution
 		self.draw_deskew_img = None  # The image the user draws the four points for deskewing on (original resized)
 		self.deskewed_img = None # The deskewed image in full resolution
 		self.deskewed_img_resized = None  # The deskewed image in a display friendly resolution
+		self.current_frame = None
 
-		# The window where the user defines the area for deskewing
-		self.drawing_window_deskew = "Define deskewing area"  
-		cv2.namedWindow(winname= self.drawing_window_deskew, flags=cv2.WINDOW_NORMAL)
-		cv2.setMouseCallback(self.drawing_window_deskew, self.collect_user_deskew)
-	
-		# The window where the deskewed picture is displayed
-		self.window_deskew = "Deskewed"  
-		cv2.namedWindow(winname= self.window_deskew, flags=cv2.WINDOW_NORMAL)
-		cv2.setMouseCallback(self.window_deskew, self.deskew_mouse_track)
-		self.mouse_track_coord = []
-
-
+		if self.configure:
+			# The window where the user defines the area for deskewing
+			self.drawing_window_deskew = "Define deskewing area"  
+			cv2.namedWindow(winname= self.drawing_window_deskew, flags=cv2.WINDOW_NORMAL)
+			cv2.setMouseCallback(self.drawing_window_deskew, self.collect_user_deskew)
+		if self.debug:
+			# The window where the deskewed picture is displayed
+			self.window_deskew = "Deskewed"  
+			cv2.namedWindow(winname= self.window_deskew, flags=cv2.WINDOW_NORMAL)
+			cv2.setMouseCallback(self.window_deskew, self.deskew_mouse_track)
+			self.mouse_track_coord = []
 
 		# Path to the config file
 		self.config_path = "config.json"
@@ -51,7 +54,7 @@ class CameraInput(object):
 		self.user_window_height = data["user_resolution"]
 
 
-		# Dict holding the coordinates for both deskewing and checkbox 
+		# Dict holding the coordinates for both deskewing
 		# These points are from the resized images
 		self.user_drawing_img_coords = {}
 		self.user_drawing_img_coords["deskew"] = [[] for i in range(4)] 
@@ -86,6 +89,19 @@ class CameraInput(object):
 		else:
 			print("There are either too many or too few points in deskew.json")
 
+		# Begin the video stream
+		self.videostream = cv2.VideoCapture(0)
+		self.videostream.set(3, self.frame_width)  
+		self.videostream.set(4, self.frame_height)  
+		self.videostream.set(5, self.framerate) 
+		ret, frame = self.videostream.read() # Get the first frame
+		print("The resolution of the images: ", frame.shape[0], frame.shape[1]) # Print the resolution of the image
+		# Adjust the resolution in case the camera does not support
+		# the resolution set in config
+		self.frame_height = frame.shape[0]  
+		self.frame_width = frame.shape[1]
+
+
 	def collect_user_deskew(self, event, x, y, flags, param):
 		"""  Is called at mouse activity in the 'Draw deskewing area'
 		and collects the user input for the area that is going to be
@@ -108,35 +124,38 @@ class CameraInput(object):
 					print("Saved current coordinates for deskewing to config")
 
 	def map(self, x, in_min, in_max, out_min, out_max):
+		""" Map function """
 		return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 
-	def image_to_coordinates(self, x, y):
-
-		# long map(long x, long in_min, long in_max, long out_min, long out_max) {
-		# return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-		# }
+	def image_to_coordinates(self, coord):
+		""" Takes a the coordinates of a pixel in 
+		the deskewed image and maps it to the coordinate
+		in the robot-coordinate-system that matches the point
+		in the picture"""
 
 		# i x fra bredden av deskewed til 0 (0 er til høyre)
-		# i x til 5 til 26,3
-		x_real = self.map(x, self.deskewed_shape[0], 0, 90, 263)
+		# i x til 9 til 26,3
+		x_real = self.map(coord[0], self.deskewed_shape[0], 0, 90, 263)
 
 		# i y fra høyden av bildet (bunn) til 0
-		# i y til 12 til -12
-		y_real = self.map(y, self.deskewed_shape[1], 0, 110, -110)
+		# i y til 11 til -11
+		y_real = self.map(coord[1], self.deskewed_shape[1], 0, 110, -110)
 	
 		return (x_real, y_real)
 
 	def deskew_mouse_track(self, event, x, y, flags, param):
+		""" When the user cliks on the deskewed image
+		the pixel it clicks is printed to the console 
+		together with the robot-coordinate-system coordinate"""
 		if event == cv2.EVENT_LBUTTONUP:
 			self.mouse_track_coord.append((x,y))
-			self.x_real, self.y_real = self.image_to_coordinates(x, y)
+			self.x_real, self.y_real = self.image_to_coordinates((x, y))
 
 			print("The image coordinates " + str(x) + ", " + str(y) + " matches these real life coordniates " + str(self.x_real) + ", " + str(self.y_real))
-	
-	def get_current_coord(self):
-		return (self.x_real, self.y_real)
 
 	def draw_mouse_track(self):
+		""" Draws all the points the user has 
+		cliked on in the deskewed image"""
 		for i in self.mouse_track_coord:
 			cv2.circle(self.deskewed_img_resized, i, 3, (255, 0, 0), -1)
 
@@ -199,10 +218,14 @@ class CameraInput(object):
 	def process(self, frame):
 		"""  Update the drawing image to the newest frame and deskews
 		the image if the user has drawn four points  """
+
+		# Rotate the fram according to the angel provided in the .json file
+		frame = imutils.rotate(frame, angle=self.camera_rotation) 
 		self.original_frame = frame
 		self.draw_deskew_img = imutils.resize(frame, height = self.user_window_height) # Resize the frame to fit it on the user's screen
-		self.draw_deskew() # Draw the user input related to deskewing onto the image
-		cv2.imshow(self.drawing_window_deskew, self.draw_deskew_img)
+		if self.configure:
+			self.draw_deskew() # Draw the user input related to deskewing onto the image
+			cv2.imshow(self.drawing_window_deskew, self.draw_deskew_img)
 
 		if len(self.user_drawing_img_coords["deskew"]) == 4:
 
@@ -217,8 +240,9 @@ class CameraInput(object):
 			deskew_points = np.array((self.org_img_coords["deskew"]), dtype = "float32")  # Convert the list to a numpy array
 			self.deskewed_img = self.four_point_transform(deskew_points, self.original_frame)  # Deskew the image
 			self.deskewed_img_resized = imutils.resize(self.deskewed_img, height = self.user_window_height)
-			self.draw_mouse_track()
-			cv2.imshow(self.window_deskew, self.deskewed_img_resized)
+			if self.debug:
+				self.draw_mouse_track()
+				cv2.imshow(self.window_deskew, self.deskewed_img_resized)
 			# Inntil videre operer vi med det resiza bilde av deskew
 			# men dette burde endres ved hjelp av skalering slik vi gjør
 			# med deskew scale
@@ -233,7 +257,11 @@ class CameraInput(object):
 		cv2.imwrite(DIR+"/image"+str(numFiles+1)+ ".png", self.deskewed_img)
 		print("Saved deskewed image")
 
-	def run(self, frame):
+	def get_next_frame(self):
+		""" Gets the next frame, proccesses (deskewing) it
+		and checks if the user wants to quit or
+		save the frame """
+		ret, frame = self.videostream.read() # Get the next frame.
 		self.process(frame) # Process the user input data
 
 		# Get the status of the keyboard keys
@@ -250,96 +278,92 @@ class CameraInput(object):
 
 class ShapeDetection(object):
 
-	def __init__(self) -> None:
+	def __init__(self, debug) -> None:
+		self.debug = debug
 		self.org_img = None
-		self.coordinates = []
+		self.org_img_dimensions = None
+		self.detected_shapes_coords = []
+
 		self.shapes_detected_window = "Shapes detected"  
 		cv2.namedWindow(winname= self.shapes_detected_window, flags=cv2.WINDOW_NORMAL)
+		if self.debug:
+			self.processd_img_window = "Processed image"  
+			cv2.namedWindow(winname= self.processd_img_window, flags=cv2.WINDOW_NORMAL)
 
-		self.processd_img_window = "Processed image"  
-		cv2.namedWindow(winname= self.processd_img_window, flags=cv2.WINDOW_NORMAL)
+	def process_img(self, img):
+		""" Prepares the image for shape
+		detection """
 
-
-	def detect(self, img):
-		self.coordinates = []
-		# converting image into grayscale image
+		# Convert image into grayscale image
 		gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-		# setting threshold of gray image
+		# Set threshold of gray image
 		_, threshold = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
-
+        # Remove noise from the image
 		kernel = np.ones((5,5), np.uint8)
 		dilate = cv2.dilate(threshold, kernel, iterations=2)
-
 		erode = cv2.erode(dilate, kernel, iterations=3)
+		if self.debug:		
+			# Display the processed image to the user
+			cv2.imshow(self.processd_img_window, erode)
+		
+		return erode
 
+	def detect_shapes(self, img):
+		""" Finds shapes in the given image """
+		self.org_img = img
+		self.org_img_dimensions = (self.org_img.shape[0], self.org_img.shape[1])
 
-		cv2.imshow(self.processd_img_window, erode)
+		processed_img = self.process_img(self.org_img)
+		self.detected_shapes_coords = []
+		contours, _ = cv2.findContours(processed_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+		org_img_area = self.org_img_dimensions[0]*self.org_img_dimensions[1]
+		# Ignore the first counter because
+		# cv2.findContours detects the whole image as a shape
+		for contour in contours[1:]:
 
-		# using a findContours() function
-		contours, _ = cv2.findContours(
-			erode, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-
-		i = 0
-		#print(len(contours))
-
-		# list for storing names of shapes
-		for contour in contours:
-
-			# here we are ignoring first counter because
-			# findcontour function detects whole image as shape
-			if i == 0:
-				i = 1
-				continue
-
-			# cv2.approxPloyDP() function to approximate the shape
+			# Approximate the shape
 			approx = cv2.approxPolyDP(
 				contour, 0.01 * cv2.arcLength(contour, True), True)
 			
 			(x, y, w, h) = cv2.boundingRect(approx)
 
-			if w*h > 50000 or w*h < 1000:
+			# The shape can not be to big or small or 
+			# the robot will not be able to pick it up
+			if not org_img_area*0.02 < w*h < org_img_area*0.15:
 				continue
-
-			# using drawContours() function
-			cv2.drawContours(img, [contour], 0, (0, 0, 255), 5)
-			# finding center point of shape
+			
+			# Draw the contours onto the picture
+			cv2.drawContours(self.org_img, [contour], 0, (0, 0, 255), 5)
+			
+			# Fin the center point of shape
 			M = cv2.moments(contour)
 			if M['m00'] != 0.0:
 				x = int(M['m10']/M['m00'])
 				y = int(M['m01']/M['m00'])
 
-			self.coordinates.append((x,y))
+			self.detected_shapes_coords.append((x,y))
 
-		# displaying the image after drawing contours
-		cv2.imshow(self.shapes_detected_window, img)
+		# Display the image with the contours
+		cv2.imshow(self.shapes_detected_window, self.org_img)
 
-		if self.coordinates:
+		if self.detected_shapes_coords:
 			return True
 		else:
 			return False
+	
+	def get_shape_orientation(self):
+		pass
 
-
-
+	def get_shape_coords(self, number_shape):
+		if self.detected_shapes_coords:
+			return self.detected_shapes_coords[number_shape]
 
 if __name__ == "__main__":
 
-	camera_input = CameraInput() # Create a instance of the CameraInput class
-	shape_detection = ShapeDetection()
-    # Begin the video stream
-	vs = cv2.VideoCapture(0)
-	vs.set(3, camera_input.frame_width)  
-	vs.set(4, camera_input.frame_height)  
-	vs.set(5, camera_input.framerate) 
-	ret, frame = vs.read() # Get the first frame
-	print("The resolution of the images: ", frame.shape[0], frame.shape[1]) # Print the resolution of the image
-	# Adjust the resolution in case the camera does not support
-	# the resolution set in config
-	camera_input.frame_height = frame.shape[0]  
-	camera_input.frame_width = frame.shape[1]
+	camera_input = CameraInput(configure=False, debug=False) # Create a instance of the CameraInput class
+	shape_detection = ShapeDetection(debug=False)
+
 	while True:
-		ret, frame = vs.read() # Get the next frame.
-		frame = imutils.rotate(frame, angle=camera_input.camera_rotation) # Rotate the fram according to the angel provided in the .json file
-		camera_input.run(frame)
-		if shape_detection.detect(camera_input.deskewed_img_resized):
-			print(camera_input.image_to_coordinates(shape_detection.coordinates[0][0], shape_detection.coordinates[0][1]))
+		camera_input.get_next_frame()
+		if shape_detection.detect_shapes(camera_input.deskewed_img_resized):
+			print(camera_input.image_to_coordinates(shape_detection.get_shape_coords(0)))

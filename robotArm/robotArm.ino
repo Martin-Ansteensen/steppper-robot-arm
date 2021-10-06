@@ -12,8 +12,6 @@
 
 // Largest motor in AX_6: 38*38*38
 
-// 90\n45\n80\n90\n90\n90\n20\n1000
-
 
 // Include libraries
 #include <AccelStepper.h>
@@ -217,9 +215,18 @@ void MoveJoint(int joint, float angle, int vel) {
     
     // Check if the joint is driven by a servo
     if (joint == 3 || joint == 6) {
-      servo_joints[JointToServo(joint)].writeMicroseconds(AngleToPulse(angle, joint));
-      delay(2000);  
+      int start_pos = servo_joints[JointToServo(joint)].read();
+      int increment = 1;
+      if (angle < start_pos){
+        increment = -1;
+      }
+        
 
+      for (int i = 0; i <= abs(start_pos-angle); i++){
+        servo_joints[JointToServo(joint)].write(AngleToPulse(start_pos+increment*i, joint));  
+        delay(vel);
+      }
+      
     // The joint is driven by a stepper motor
     } else {
       int old_pos;
@@ -341,15 +348,22 @@ void MoveJoints(int pos[], float vel) {
 
   // Run each joint
   int counter = 1;
+  bool finish = false; 
 
 // Antar at servoen aldri kjører lengst
-  while (stepper_joints[longest_dist[1]].isRunning()) { // this will not work if the loop runs and a step is not finished
+  while (true) { // this will not work if the loop runs and a step is not finished
+    finish = true;
     for (int i = 0; i <= 6; i++) {
-      if ((i == 3 || i == 6) && counter % 3 == 0) {
+      //  && counter % 3 == 0
+      if ((i == 3 || i == 6)) {
         // Move the servo to the startposition plus x*step size. The step size can be negative
         float new_pos = servo_start[JointToServo(i)] + (step_size[i]*counter);
         servo_joints[JointToServo(i)].writeMicroseconds(AngleToPulse(new_pos, i));
-        delay(0.5);
+        if (new_pos != pos[i]){
+          finish = false;
+        }
+          
+        //delay(0.5);
 
       } else {
         // If the stepper with the longest travel distance has reached its position, increase the counter
@@ -357,9 +371,15 @@ void MoveJoints(int pos[], float vel) {
         if (i == longest_dist[1] && abs(stepper_joints[i].distanceToGo()) <= abs(travel_dist[i] - (counter * step_size[i]))) {
           counter ++;
         }
-          stepper_joints[i].run();
+        if (stepper_joints[i].run()){
+          finish = false;
+        }
       }
-
+    }
+    // If none of the motors has changed the value, all
+    // of them must be finished
+    if (finish){
+      break;
     }
   }
   // Set the correct position of joint 2
@@ -379,52 +399,76 @@ depending on the number of points
 
 void TriggerEndstops() {
   // Trigger the endstop for each axis one
-  // joint at a time. Then, move all of the joints
-  // to their home position
+  // joint at a time. Then, do it again but
+  // slower
 
   int steps;
   int joint;
   int home_sequence[7] = {1, 0, 2, 3, 5, 4, 6};
-  for (int i = 0; i <= 6; i++){
-    joint = home_sequence[i];
-    if (joint == 3 || joint == 6){
-      MoveJoint(joint, 0, 100);
-      // Do not do anythin if it is a servo
-      Serial.println("Servo joint, no endstop to trigger");
-      MoveJoint(joint, 180, 10);
-    } else {
-      // Get the max distance the joint potentially has to travel
-      // Make it negative because we have defined negative as twoards the endstop
-      steps = stepsPerDeg[joint] * -1; 
-      if (joint == 2){
-        steps = steps*-1;
-      }
-      
-      stepper_joints[joint].move(steps);
-      
-      stepper_joints[joint].setMaxSpeed(1000);
-      stepper_joints[joint].setAcceleration(250);
-      // Move joint 2 if we move joint 1 due to the moition link
-      if (joint == 1){
-        stepper_joints[2].move(steps); //*-1
-        stepper_joints[2].setMaxSpeed(1000);
-        stepper_joints[2].setAcceleration(250);
-      }
-      // Move the joint until the endstop is triggered
-      while(digitalRead(endstops[joint]) == 0){
-        stepper_joints[joint].run();
+  int vel = 1000;
+  int acc = 250;
+  float dist_multi = -1;
+  
+  for (int k = 0; k <= 2; k++){
+    if (k == 1){
+      vel = 200;
+      acc = 40;
+      dist_multi = 0.01;
+    }
+    if (k == 2){
+      vel = 200;
+      acc = 40;
+      dist_multi = -1;
+    }
+    
+    for (int i = 0; i <= 6; i++){
+      joint = home_sequence[i];
+      if (joint == 3 || joint == 6){
+        Serial.println("Servo joint, no endstop to trigger");
+        MoveJoint(joint, 180, 15);
+      } else {
+        // Get the max distance the joint potentially has to travel
+        // Make it negative because we have defined negative as twoards the endstop
+        steps = stepsPerDeg[joint] * dist_multi; 
+        if (joint == 2){
+          steps = steps*-1;
+        }
+        
+        stepper_joints[joint].move(steps);
+        
+        stepper_joints[joint].setMaxSpeed(vel);
+        stepper_joints[joint].setAcceleration(acc);
+        // Move joint 2 if we move joint 1 due to the moition link
         if (joint == 1){
-          stepper_joints[2].run();
+          stepper_joints[2].move(steps);
+          stepper_joints[2].setMaxSpeed(vel);
+          stepper_joints[2].setAcceleration(acc);
+        }
+        if (k == 1){
+          while(stepper_joints[joint].distanceToGo() != 0){
+            stepper_joints[joint].run();
+            if (joint == 1){
+              stepper_joints[2].run();
+            }
+          }
+          continue;
+        }
+        // Move the joint until the endstop is triggered
+        while(digitalRead(endstops[joint]) == 0){
+          stepper_joints[joint].run();
+          if (joint == 1){
+            stepper_joints[2].run();
+          }
+        }
+        Serial.println("Endstop triggered");
+        // Stop the motor from moving and reset the postion
+        stepper_joints[joint].stop();
+        stepper_joints[joint].setCurrentPosition(0);
+        if (joint == 1){
+            stepper_joints[2].stop();
+            stepper_joints[2].setCurrentPosition(0);
         }
       }
-      Serial.println("Endstop triggered");
-      // Stop the motor from moving and reset the postion
-      stepper_joints[joint].stop();
-      stepper_joints[joint].setCurrentPosition(0);
-      if (joint == 1){
-          stepper_joints[2].stop();
-          stepper_joints[2].setCurrentPosition(0);
-        }
     }
   }
 }
@@ -485,7 +529,7 @@ void ReadSerial(){
       }
       tmp_in = Serial.readStringUntil('\n');
       if (tmp_in == "q"){
-        Serial.println("Quit");
+        Serial.println("quit");
         return;
       }
       input_data[i] = tmp_in.toInt();
@@ -494,8 +538,11 @@ void ReadSerial(){
     Serial.println("");
   
     // Call the function with the given parameters
+    Serial.println("busy");
     MoveJoint(input_data[0], input_data[1], input_data[2]);
-    Serial.println("finish");
+    // There are no commands running, so the robot is ready
+    // to recieve no commands
+    Serial.println("ready");
 
   } else if (command == b){
     Serial.println("Enter angle of joint 0-6 (inculding the gripper) and the top velocity on eight different lines");
@@ -509,7 +556,7 @@ void ReadSerial(){
       }
       tmp_in = Serial.readStringUntil('\n');
       if (tmp_in == "q"){
-        Serial.println("Quit");
+        Serial.println("quit");
         return;
       }
       if (i != 7) {
@@ -522,20 +569,32 @@ void ReadSerial(){
         Serial.println(input_vel);
       }
     }
+    // Call the command and tell the pi that the roobot
+    // arm is busy executing a command
+    Serial.println("busy");
     MoveJoints(input_angles, input_vel);
-    Serial.println("finish");
+    // There are no commands running, so the robot is ready
+    // to recieve no commands
+    Serial.println("ready");
 
   } else if (command == h){
+    Serial.println("busy");
     Home();
-    Serial.println("finish");
-    
+    // There are no commands running, so the robot is ready
+    // to recieve no commands
+    Serial.println("ready");
+ 
   } else if (command == e){
+    Serial.println("busy");
     TriggerEndstops();
-    Serial.println("finish");
+    // There are no commands running, so the robot is ready
+    // to recieve no commands
+    Serial.println("ready");
   }
   else {
     Serial.println("The input did not match any commands");
   }
+
 }
 
 int JointToServo(int joint){
