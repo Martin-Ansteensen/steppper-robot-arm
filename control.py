@@ -12,7 +12,7 @@ geometry = [
     [0,0,112.6], # V1
     [57.7,0,0],  # V2
     [80.8,0,0],  # V3
-    [130,0,0]   # V4
+    [73,0,0]   # V4 is to the end of the gripper bracket
 ]
 
 joint_limits = [
@@ -40,53 +40,55 @@ class RobotArm(object):
         self.last_point = (None, None)
         self.current_point = (None, None)
 
-    def pick_object_sequence(self):
+    def pick_camera_object(self):
         """ Picks up an object identified in the picture"""
 
         # Quit if there no objects in the image and 
         # if the arduino is not ready for a new command
         if (not shape_detection.detected_shapes_coords) or (not arduino.ready):
-            return
+            return False
         # Get the coordinates of the first object in the image 
         xy = camera_input.image_to_coordinates(shape_detection.get_shape_coords(number_shape=0))
         # Create the list of coordinates in 3D-space
         # The robot first moves to center of the object 
         # 3 cm over the ground
-        coordinates = [xy[0], xy[1], 30, 0, 3.14, 0, 180]
+        coordinates = [xy[0], xy[1], 90, 0, 3.14, 0, 180]
         print("Control: 3D coordinates ", coordinates)
         # Move the arm to the coordinate, and only
         # proceed if it did so successfully
         if not self.move_to_coordinate(coordinates, 1000):
-            return
+            return False
         # Wait for the arduino to become ready
         # for the next command
-        arduino.wait_for_ready(update_camera_feed)
-        coordinates[2] = 1
+        arduino.wait_for_ready(self.update_camera_feed)
+        coordinates[2] = 55
         print("Control: 3D coordinates ", coordinates)
         # Move the arm to the coordinate, and only
         # proceed if it did so successfully
         if not self.move_to_coordinate(coordinates, 1000):
-            return
-        # Wait for the arduino to become ready
+            return False
+        # Wait for the arduino to cbecome ready
         # for the next command
-        arduino.wait_for_ready(update_camera_feed)
+        arduino.wait_for_ready(self.update_camera_feed)
         # Close the gripper
-        arduino.send_MoveJoint(6, 115, 30)
+        arduino.send_MoveJoint(6, 120, 30)
         # Wait for the arduino to become ready
         # for the next command
-        arduino.wait_for_ready(update_camera_feed)
+        arduino.wait_for_ready(self.update_camera_feed)
         # Move the arm up
-        arduino.send_MoveJoints([0, -20, -30, 0, 0, 0, 115], 1000)
+        arduino.send_MoveJoints([0, -20, -30, 0, 0, 0, 120], 1000)
         # Wait for the arduino to become ready
         # for the next command
-        arduino.wait_for_ready(update_camera_feed)
+        arduino.wait_for_ready(self.update_camera_feed)
         # Open the gripper
         arduino.send_MoveJoint(6, 180, 30)
+        return True
         
     def move_to_coordinate(self, coordinates, speed):
         """ Moves the endaffector to a given point
         int space. This includes check that the coordinates
-        are valid and so on"""
+        are valid and so on. The coordinates are
+        [x, y, z, a, b, c, gripper]"""
 
         # Perform IK and check if the angles are valid
         # We remove the last angle (the gripper angle)
@@ -116,33 +118,160 @@ class RobotArm(object):
         on in the picture by the user""" 
         # Check if there are any points in the list
         if not camera_input.mouse_track_coord:
-            return
+            return False
         # Get the last point in the list
         self.current_point = camera_input.mouse_track_coord[-1]
         # Check wether the point has changed
         # or not to take stress off the arduino
         if self.current_point == self.last_point:
-            return
+            return False
         # Update the previous point
         self.last_point = self.current_point
         # Get the point in robot arm coordinates
         point = camera_input.image_to_coordinates(self.current_point)
         coordinates = [point[0], point[1], height, 0, 3.14, 0, 180]
         self.move_to_coordinate(coordinates, speed)
-        arduino.wait_for_ready(update_camera_feed)
+        arduino.wait_for_ready(self.update_camera_feed)
+        return True
 
-def update_camera_feed():
-    """ Gets the next frame and perform
-    object detection on it """
-    camera_input.get_next_frame()
-    # Perfrom shape detection
-    shape_detection.detect_shapes(camera_input.deskewed_img_resized)
+    def pick_ball(self, speed):
+        """ Picks up a ball from the ramp and sends
+        it down again"""
+        # Move over the ball
+        if not self.move_to_coordinate([225, 115, 114, -2.89, 0.11, 1.2, 180], speed):
+            return False
+        # Wait for the arduino to become ready
+        # for the next command
+        arduino.wait_for_ready(self.update_camera_feed)
+        
+        # Lower down
+        if not self.move_to_coordinate([230, 115, 100, -2.89, 0.11, 1.2, 180], speed-300):
+            return False
+        # Wait for the arduino to become ready
+        # for the next command
+        arduino.wait_for_ready(self.update_camera_feed)
+        
+        # Close the gripper
+        arduino.send_MoveJoint(6, 138, 30)
+        # Wait for the arduino to become ready
+        # for the next command
+        arduino.wait_for_ready(self.update_camera_feed)
+        
+        # Dial in
+        if not self.move_to_coordinate([127, -132, 303, 1.5, 0.8, -1.58, 138], speed):
+            return False
+        # Wait for the arduino to cbecome ready
+        # for the next command
+        arduino.wait_for_ready(self.update_camera_feed)
+
+        # Go over the rail
+        if not self.move_to_coordinate([85, -175, 230, 1.82, 0.89, -1.49, 138], speed):
+            return False
+        # Wait for the arduino to cbecome ready
+        # for the next command
+        arduino.wait_for_ready(self.update_camera_feed)
+
+
+        # Open the gripper
+        arduino.send_MoveJoint(6, 180, 30)
+        # Wait for the arduino to become ready
+        # for the next command
+        arduino.wait_for_ready(self.update_camera_feed)
+
+        # Go higher 
+        if not self.move_to_coordinate([70, -175, 280, 1.82, 0.89, -1.6, 180], speed):
+            return False
+        # Wait for the arduino to cbecome ready
+        # for the next command
+        arduino.wait_for_ready(self.update_camera_feed)
+
+        # Close the gripper
+        arduino.send_MoveJoint(6, 100, 10)
+        # Wait for the arduino to become ready
+        # for the next command
+        arduino.wait_for_ready(self.update_camera_feed)
+
+        # Go behind the ball 
+        if not self.move_to_coordinate([19, -202, 234, 1.54, 0.16, -0.8, 100], speed-300):
+            return False
+        # Wait for the arduino to cbecome ready
+        # for the next command
+        arduino.wait_for_ready(self.update_camera_feed)
+
+
+        # Push the ball
+        if not self.move_to_coordinate([131, -155, 240, 1.54, 0.77, -0.78, 100], speed-300):
+            return False
+        # Wait for the arduino to cbecome ready
+        # for the next command
+        arduino.wait_for_ready(self.update_camera_feed)
+
+    def user_control(self):
+        """ Lets the user choose what function to run
+        based on input in the console """
+        #"move_to_coordinate", "move_to_mouse", "pick_camera_object"
+        self.functions = ["a", "b", "c", "z"]
+        # Only run if the arduino is ready for new commands
+        if not arduino.ready:
+            return
+
+        # Get the user input
+        input_string = str(input("Enter the funtion: "))
+        
+        # Use the move_to_coordinate command
+        if input_string == "s":
+            arguments = str(input("Enter the six coordinates and grippper seperated by space: ")).split()
+            for i in range(len(arguments)):
+                arguments[i] = float(arguments[i])
+            if len(arguments) == 7:
+                self.move_to_coordinate(arguments, 700)
+        
+        # Move to mouse
+        elif input_string == "m":    
+                while True:
+                    success = self.move_to_mouse(90, 800)
+                    self.update_camera_feed()
+                    if success:
+                        break
+
+        # Camera detection
+        elif input_string == "c":    
+                while True:
+                    success = self.pick_camera_object()
+                    self.update_camera_feed()
+                    if success:
+                        break
+
+        # Zero all joints
+        elif input_string == "z":    
+            arduino.send_MoveJoints([0, 0, 0, 0, 0, 0, 180], 500)
+
+        # Ball          
+        elif input_string == "b":    
+            self.pick_ball(1000)
+
+        # Move a single joint
+        elif input_string == "j":
+            arguments = str(input("Enter the joint, angle and speed seperated by space: ")).split()
+            for i in range(len(arguments)):
+                arguments[i] = float(arguments[i])
+            if len(arguments) == 3:
+                arduino.send_MoveJoint(arguments[0], arguments[1], arguments[2])
+
+    def update_camera_feed(self):
+        """ Gets the next frame and perform
+        object detection on it """
+        camera_input.get_next_frame()
+        # Perfrom shape detection
+        shape_detection.detect_shapes(camera_input.deskewed_img_resized)
+
 
 
 robot_arm = RobotArm()
 while True:
-    update_camera_feed()
+    robot_arm.update_camera_feed()
     # Read the serial
     arduino.read_serial()
-    #pick_object_sequence()
-    robot_arm.move_to_mouse(30, 2000)
+    # pick_camera_object()
+    # robot_arm.move_to_mouse(90, 1000)
+    robot_arm.user_control()
