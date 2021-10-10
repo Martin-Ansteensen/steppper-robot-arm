@@ -280,6 +280,7 @@ void MoveJoints(int pos[], float vel) {
   servo_start[0] = servo_joints[0].read();
   delay(10);
   servo_start[1] = servo_joints[1].read();
+  delay(10);
   
   // Calcualte the steps and travel lengths for all joints
   int steps; // The number of units the motor would have to travel from its zero position
@@ -351,20 +352,37 @@ void MoveJoints(int pos[], float vel) {
   bool finish = false; 
 
 // Antar at servoen aldri kjører lengst
+  bool servo0_finish = false;
+  bool servo1_finish = false;
+  
   while (true) { // this will not work if the loop runs and a step is not finished
     finish = true;
     for (int i = 0; i <= 6; i++) {
-      //  && counter % 3 == 0
-      if ((i == 3 || i == 6)) {
-        // Move the servo to the startposition plus x*step size. The step size can be negative
-        float new_pos = servo_start[JointToServo(i)] + (step_size[i]*counter);
-        servo_joints[JointToServo(i)].writeMicroseconds(AngleToPulse(new_pos, i));
-        if (new_pos != pos[i]){
-          finish = false;
-        }
-          
-        //delay(0.5);
 
+      if (i == 3){
+        if (!servo0_finish){
+          // Move the servo to the startposition plus x*step size. The step size can be negative
+          float new_pos = servo_start[JointToServo(i)] + (step_size[i]*counter);
+          servo_joints[JointToServo(i)].writeMicroseconds(AngleToPulse(new_pos, i));
+          if (new_pos != pos[i]){
+            finish = false;
+          }  else {
+            servo0_finish = true;
+          }
+        }
+      }
+      
+      else if (i == 6){
+        if (!servo1_finish){
+          // Move the servo to the startposition plus x*step size. The step size can be negative
+          float new_pos = servo_start[JointToServo(i)] + (step_size[i]*counter);
+          servo_joints[JointToServo(i)].writeMicroseconds(AngleToPulse(new_pos, i));
+          if (new_pos != pos[i]){
+            finish = false;
+          }  else {
+            servo1_finish = true;
+          }
+        }
       } else {
         // If the stepper with the longest travel distance has reached its position, increase the counter
         // addde <=, could cause probelms
