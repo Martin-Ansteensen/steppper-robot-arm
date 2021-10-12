@@ -360,7 +360,7 @@ class ShapeDetection(object):
 
 if __name__ == "__main__":
 
-	camera_input = CameraInput(configure=False, debug=False) # Create a instance of the CameraInput class
+	camera_input = CameraInput(configure=True, debug=True) # Create a instance of the CameraInput class
 	shape_detection = ShapeDetection(debug=False)
 
 	while True:

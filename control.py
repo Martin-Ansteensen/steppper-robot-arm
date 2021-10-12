@@ -129,7 +129,7 @@ class RobotArm(object):
         self.last_point = self.current_point
         # Get the point in robot arm coordinates
         point = camera_input.image_to_coordinates(self.current_point)
-        coordinates = [point[0], point[1], height, 0, 3.14, 0, 180]
+        coordinates = [point[0], point[1], height, 0, 3.14, 0, 100]
         self.move_to_coordinate(coordinates, speed)
         arduino.wait_for_ready(self.update_camera_feed)
         return True
@@ -165,7 +165,7 @@ class RobotArm(object):
         arduino.wait_for_ready(self.update_camera_feed)
 
         # Go over the rail
-        if not self.move_to_coordinate([85, -175, 230, 1.82, 0.89, -1.49, 138], speed):
+        if not self.move_to_coordinate([100, -175, 230, 1.82, 0.89, -1.49, 138], speed):
             return False
         # Wait for the arduino to cbecome ready
         # for the next command
@@ -180,27 +180,6 @@ class RobotArm(object):
 
         # Go higher 
         if not self.move_to_coordinate([70, -175, 280, 1.82, 0.89, -1.6, 180], speed):
-            return False
-        # Wait for the arduino to cbecome ready
-        # for the next command
-        arduino.wait_for_ready(self.update_camera_feed)
-
-        # Close the gripper
-        arduino.send_MoveJoint(6, 100, 10)
-        # Wait for the arduino to become ready
-        # for the next command
-        arduino.wait_for_ready(self.update_camera_feed)
-
-        # Go behind the ball 
-        if not self.move_to_coordinate([19, -202, 234, 1.54, 0.16, -0.8, 100], speed-300):
-            return False
-        # Wait for the arduino to cbecome ready
-        # for the next command
-        arduino.wait_for_ready(self.update_camera_feed)
-
-
-        # Push the ball
-        if not self.move_to_coordinate([131, -155, 240, 1.54, 0.77, -0.78, 100], speed-300):
             return False
         # Wait for the arduino to cbecome ready
         # for the next command
