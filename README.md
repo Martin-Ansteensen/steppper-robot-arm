@@ -1,4 +1,4 @@
-# robotCar - Still in progress
+# Stepper robot arm
 A six degreees of freedom (6DOF) robot arm able to pick up objects. Uses an Arduino Mega with a Ramps 1.4 shield to control 5 stepper motors, 2 servos and some switces. A Raspberry with a PiCam is used for the object detection.
 ![arm](images/arm.jpg)
 
