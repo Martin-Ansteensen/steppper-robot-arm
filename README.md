@@ -10,7 +10,7 @@ An arduino with a RAMPS 1.4 controls all of the motors and limit-switches. It co
 
 ## Forward and inward kinematics
 Taken from https://github.com/glumb/robot-gui/blob/master/js/Kinematics.js
-## Pick up objects
+## Pick object detected by camera
 The code uses cv2 as the framework to process images and detect objects. The objects width and orientation is not taken into account when picking it up (yet).
 
 [![Pick object detected by camera](https://img.youtube.com/vi/NfAm4Rar-Uk/0.jpg)](https://youtu.be/NfAm4Rar-Uk)
