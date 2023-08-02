@@ -188,8 +188,7 @@ class RobotArm(object):
     def user_control(self):
         """ Lets the user choose what function to run
         based on input in the console """
-        #"move_to_coordinate", "move_to_mouse", "pick_camera_object"
-        self.functions = ["a", "b", "c", "z"]
+        
         # Only run if the arduino is ready for new commands
         if not arduino.ready:
             return
