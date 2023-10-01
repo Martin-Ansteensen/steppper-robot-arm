@@ -8,7 +8,7 @@ Various sizes of NEMA17 stepper motors, a large servo and a 28-BYJ48  unipolar s
 An arduino with a RAMPS 1.4 controls all of the motors and limit-switches. It communicates with a Raspberry Pi, responsible for object detection (using a Pi Cam).
 ![bearing](images/bearing_1.jpg)
 
-## Forward and inward kinematics
+## Forward and inverse kinematics
 Taken from https://github.com/glumb/robot-gui/blob/master/js/Kinematics.js
 ## Pick object detected by camera
 The code uses cv2 as the framework to process images and detect objects. The objects width and orientation is not taken into account when picking it up (yet).
