@@ -1,32 +1,85 @@
-# Stepper robot arm
-A six degreees of freedom (6DOF) robot arm able to pick up objects. Uses an Arduino Mega with a Ramps 1.4 shield to control 5 stepper motors, 2 servos and some switces. A Raspberry with a PiCam is used for the object detection.
-![arm](images/arm.jpg)
+# Stepper Robot Arm
 
-## Design
-Almost all parts of the arm are 3D-printed. 3D-printed ball bearings consisting of BB-bullets and 3D-printed parts are used in stead of normal ball bearings.
-Various sizes of NEMA17 stepper motors, a large servo and a 28-BYJ48  unipolar stepper motor are used to move the various joints. A small servo is used for the gripper. All joints using stepper motors have a limit switch used to detect the joint's home position. 
-An arduino with a RAMPS 1.4 controls all of the motors and limit-switches. It communicates with a Raspberry Pi, responsible for object detection (using a Pi Cam).
-![bearing](images/bearing_1.jpg)
+A 6‑DOF robot arm that can pick up stuff. Most parts are 3D‑printed, an Arduino Mega + RAMPS 1.4 drives the motors, and a Raspberry Pi with a Pi Camera is used for the object detection.
 
-## Forward and inverse kinematics
-Taken from https://github.com/glumb/robot-gui/blob/master/js/Kinematics.js
-## Pick object detected by camera
-The code uses cv2 as the framework to process images and detect objects. The objects width and orientation is not taken into account when picking it up (yet).
+![Arm photo](images/arm.jpg)
 
+---
+
+## What this project is
+
+- 6‑joint arm (6‑DOF) that can grab small objects
+- Mostly 3D‑printed parts
+- Steppers for the big joints, a large servo for one joint, and a tiny servo for the gripper
+- Limit switches on the stepper joints for homing
+- Raspberry Pi + Pi Camera does the vision, talks to the Arduino over serial
+- Forward and inverse kinematics baked in
+- Pick‑and‑place demos included
+
+---
+
+## Hardware (short version)
+
+**Mechanics**
+- Nearly everything is 3D‑printed.
+- DIY ball bearings: BB pellets inside printed races (cheap and good enough).
+
+**Motors**
+- Mix of NEMA‑17 steppers.
+- One 28‑BYJ48 unipolar stepper for a light joint.
+- One larger servo for a joint.
+- One micro servo for the gripper.
+
+**Control + Sensors**
+- Arduino Mega + RAMPS 1.4 for motors and limit switches.
+- Raspberry Pi + Pi Camera for object detection.
+
+![Printed bearing](images/bearing_1.jpg)
+
+---
+
+## Software (short version)
+
+- Arduino firmware handles steppers/servos and homing.
+- Raspberry Pi runs the vision code (OpenCV / `cv2`) and sends target positions to the Arduino.
+- You can pick a region in the camera image, the code deskews it, and maps pixels to the arm’s XY plane with a quick calibration.
+
+### Kinematics
+
+The forward and inverse kinematics are adapted from this project (tuned for this arm’s links and joint directions):  
+<https://github.com/glumb/robot-gui/blob/master/js/Kinematics.js>
+
+---
+
+## Camera object detection
+
+- Uses OpenCV to find objects in the selected area.
+- Right now it doesn’t consider object width or in‑plane rotation (that’s on the roadmap).
+
+**Video demo** — *Click the image to watch on YouTube*  
 [![Pick object detected by camera](https://img.youtube.com/vi/NfAm4Rar-Uk/0.jpg)](https://youtu.be/NfAm4Rar-Uk)
 
-In software, the user can choose four points to define the area where the arm will look for objects to pick up. This area of the camera feed is deskewed in an effort to take into account the angle of the camera. By measuring the 2D-location if two in the image lies using the arm's coordinate system (center of arm is at (0,0)) and entering them into the code, all other points in the image can be converted (by scaling and shifting) into the corresponding coordinate in the arm's coordinate system.
+---
 
-![select_area](images/select_area.jpg)
-![selected_area](images/selected_area.jpg)
+## Pick the search area & map pixels to arm coordinates
 
-A debug feature is implemented in the software to ensure that the pixels in the images from the camera feed are mapped to the correct coordinate in the arm's coordinate system. When selecting different points in the image, the arm will move to the mapped coordinate from the image, and if this matches the real world location (the arm's coordinate system) everything work's as intended.
+- In the UI, pick four points to mark the area where the arm should look.
+- The code deskews that patch to handle camera angle.
+- Give the system two known points (with their arm‑frame coordinates, arm center is `(0, 0)`). From that, it scales/shifts so any pixel becomes an XY in the arm frame.
 
+![Select area](images/select_area.jpg)  
+![Selected area (deskewed)](images/selected_area.jpg)
+
+**Mapping test video** — *Click the image to watch on YouTube*  
 [![Coordinate mapping test](https://img.youtube.com/vi/9uHPGsZpFGw/0.jpg)](https://youtu.be/9uHPGsZpFGw)
 
-## Pick and place ball
+---
 
+## Pick & place
+
+A small example where the arm picks up a ball and drops it somewhere else.
+
+**Pick & place video** — *Click the image to watch on YouTube*  
 [![Pick and place ball](https://img.youtube.com/vi/iDKqw5VlQdQ/0.jpg)](https://youtu.be/iDKqw5VlQdQ)
 
-
-
+---
