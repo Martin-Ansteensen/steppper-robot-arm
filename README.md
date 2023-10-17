@@ -3,7 +3,7 @@ A six degreees of freedom (6DOF) robot arm able to pick up objects. Uses an Ardu
 ![arm](images/arm.jpg)
 
 ## Design
-Almost all parts of the arm are 3D-printed. 3D-printed ball bearings consisting of BB-bullets and and 3D-printed parts are used in stead of normal ball bearings.
+Almost all parts of the arm are 3D-printed. 3D-printed ball bearings consisting of BB-bullets and 3D-printed parts are used in stead of normal ball bearings.
 Various sizes of NEMA17 stepper motors, a large servo and a 28-BYJ48  unipolar stepper motor are used to move the various joints. A small servo is used for the gripper. All joints using stepper motors have a limit switch used to detect the joint's home position. 
 An arduino with a RAMPS 1.4 controls all of the motors and limit-switches. It communicates with a Raspberry Pi, responsible for object detection (using a Pi Cam).
 ![bearing](images/bearing_1.jpg)
